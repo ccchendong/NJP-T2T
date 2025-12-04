@@ -1,0 +1,31 @@
+#!/bin/sh
+# Calculate nucleotide diversity (π) for population A
+vcftools --vcf input.vcf --window-pi 100000 --window-pi-step 10000 --keep popA.table --out Pi.popA
+
+# Calculate nucleotide diversity (π) for population B
+vcftools --vcf input.vcf --window-pi 100000 --window-pi-step 10000 --keep popB.table --out Pi.popB
+
+# Calculate fixation index (FST) between populations
+vcftools --vcf input.vcf --fst-window-size 100000 --fst-window-step 10000 --weir-fst-pop popA.table --weir-fst-pop popB.table --out Fst.popA.popB
+
+# Calculate ROD from π values and extract top 5%
+Rscript calculate_ROD.R Pi.popA.windowed.pi Pi.popB.windowed.pi
+
+# Extract top 5% FST regions
+awk '$NF > 0.225845' Fst.popA.popB.windowed.weir.fst > Fst_top5.bed
+
+# Extract top 5% ROD regions
+awk '$NF > 0.95' ROD_values.txt > ROD_top5.bed
+
+# Merge adjacent candidate windows
+bedtools merge -i Fst_top5.bed > Fst_top5_merged.bed
+bedtools merge -i ROD_top5.bed > ROD_top5_merged.bed
+
+# Intersect top 5% regions from both methods
+bedtools intersect -a Fst_top5_merged.bed -b ROD_top5_merged.bed > candidate_regions.bed
+
+# Intersect with gene annotations (at least 10% overlap)
+bedtools intersect -a candidate_regions.bed -b gene_annotations.bed -F 0.1 > selected_genes.bed
+
+# Generate gene structure visualization
+Rscript generate_GSDS_input.R selected_genes.bed

@@ -1,0 +1,16 @@
+#!/bin/sh
+# Resequencing alignment with BWA
+bwa mem -t 18 -k 28 -M -R "@RG\tID:$sample\tPL:illumina\tLB:$sample\tSM:$sample" Sscrofa11.1.fasta reseq_R1.fastq reseq_R2.fastq | samtools view -S -b -o sample.bam
+
+
+# Structural variation detection with Lumpy-sv
+lumpyexpress -B aligned.bam -S aligned.splitters.bam -D aligned.discordants.bam -o sv_calls.vcf
+
+# SV genotyping with svtyper
+svtyper -B aligned.bam -i sv_calls.vcf -o genotyped_svs.vcf
+
+# RNA-seq alignment with HISAT2
+hisat2 -x genome_index -1 RNAseq_R1.fq -2 RNAseq_R2.fq -S rna_aligned.sam
+
+# RNA-seq alignment metrics calculation
+samtools flagstat rna_aligned.sam > rna_mapping_stats.txt

@@ -1,1 +1,54 @@
+#!/bin/sh
+# Repeat annotation with RepeatModeler2
+RepeatModeler -database genome -LTRStruct -pa 32
 
+# LTR annotation with LTR_retriever
+LTR_retriever -genome genome.fasta -inharvest genome.fasta.harvest -infinder genome.fasta.finder
+
+# Repeat masking with RepeatMasker
+RepeatMasker -lib custom_library.fa genome.fasta
+
+# Tandem repeat annotation with TRF
+trf genome.fasta 2 7 7 80 10 50 500 -d -h
+
+# Segmental duplication identification with BISER
+biser -i genome.fasta -o biser_output
+
+# Gene prediction with Augustus
+augustus --species=human genome.fasta > augustus.gff
+
+# Homology-based prediction with GeMoMa
+GeMoMa -t genome.fasta -q query_proteins.fasta -outdir gemoma_out
+
+# RNA-seq alignment with HISAT2
+hisat2 -x genome_index -1 RNAseq_R1.fq -2 RNAseq_R2.fq -S aligned.sam
+
+# Transcript assembly with StringTie
+stringtie aligned.sam -o transcripts.gtf
+
+# Transcript-based prediction with GeneMarkS-T
+gmsn.pl --train genome.fasta --fnn transcripts.fasta
+
+# Evidence integration with EvidenceModeler
+perl EVM.pl --genome genome.fasta --weights weights.txt
+
+# Functional annotation with eggNOG
+emapper.py -i proteins.fasta -o eggnog_out
+
+# GO annotation with InterProScan
+interproscan.sh -i proteins.fasta -f tsv
+
+# tRNA prediction with tRNAscan-SE
+tRNAscan-SE genome.fasta > trna.out
+
+# rRNA prediction with barrnap
+barrnap genome.fasta > rrna.gff
+
+# Small ncRNA annotation with Infernal/Rfam
+cmscan --tblout small_ncrna.tblout Rfam.cm genome.fasta
+
+# Pseudogene identification with GenBlastA
+genblasta -q query_proteins.fasta -t genome.fasta -o genblasta.out
+
+# Pseudogene validation with GeneWise
+genewise protein.fasta genome_region.fasta > genewise.gff

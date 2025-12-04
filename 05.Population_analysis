@@ -1,0 +1,7 @@
+#!/bin/sh
+# Filter SNPs with PLINK
+plink --vcf snps.vcf --maf 0.01 --hwe 1e-6 --geno 0.1 --make-bed --out filtered_snps
+# Calculate allele frequencies
+plink --bfile filtered_snps --freq --out allele_freq
+# Calculate heterozygosity and inbreeding coefficients
+plink --bfile filtered_snps --het --out het_results

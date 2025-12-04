@@ -1,0 +1,28 @@
+#!/bin/bash
+# Filter variants by missingness and MAF
+/public/apps/plink/plink --vcf $vcf --geno 0.1 --maf 0.05 --not-chr ChrX --allow-extra-chr --recode vcf-iid --out all.missing_maf --biallelic-only strict --set-missing-var-ids @:# --keep-allele-order
+
+# LD pruning for independent variants
+/public/apps/plink/plink --vcf all.missing_maf.vcf --indep-pairwise 50 10 0.3 --out tmp.ld --allow-extra-chr --set-missing-var-ids @:#
+
+# Extract LD-pruned variants
+/public/apps/plink/plink --vcf all.missing_maf.vcf --extract tmp.ld.prune.in --out all.LDfilter --recode vcf-iid --keep-allele-order --allow-extra-chr --set-missing-var-ids @:#
+
+# Convert to transposed 12 format for EMMAX
+/public/apps/plink/plink --vcf all.LDfilter.vcf --recode 12 transpose --output-missing-genotype 0 --out snp_filter --set-missing-var-ids @:# --allow-extra-chr --keep-allele-order
+
+# Prepare phenotype file
+awk -F, 'NR > 1 {print "A"$1"\t"$15}' $phenotype_data > id_phenotype.txt
+
+# Calculate kinship matrix with EMMAX
+/public/apps/emmax-kin-intel64 -v -d 10 -o ./pop.ship snp_filter
+
+# Perform GWAS with EMMAX
+/public/apps/emmax-intel64 -v -d 10 -t snp_filter -p normalized_phenotype.txt -k pop.ship -o emmax.out
+
+# Prepare Manhattan plot input file
+awk '{print $1"\t"$2"\t"$3"\t"$4"\t"}' snp_filter.tped | paste - emmax.out.ps | awk 'BEGIN{print "SNP\tCHR\tBP\tP"}{if($2==$5){print $2"\t"$1"\t"$4"\t"$NF}}' > emmax.out.ps.manht_input
+
+# Generate plots
+Rscript /public/home/njp_production_GWAS/code/plot/Manhattan.r
+Rscript /public/home/njp_production_GWAS/code/plot/QQ.r

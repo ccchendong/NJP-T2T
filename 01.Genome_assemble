@@ -1,1 +1,51 @@
+#!/bin/sh
+# CCS processing of PacBio HiFi reads
+ccs --minPasses 3 --min-rq 0.99 --min-length 500 pacbio_subreads.bam pacbio_ccs.bam -j 32
 
+# Convert BAM to FASTQ
+bam2fastq -o pacbio_hifi pacbio_ccs.bam
+
+# Contig assembly with Hifiasm
+hifiasm -o assembly_hifiasm -t 32 --primary pacbio_hifi.fastq.gz
+
+# Extract primary assembly from GFA
+awk '/^S/{print ">"$2"\n"$3}' assembly_hifiasm.p_ctg.gfa > contigs.fasta
+
+# Hi-C reads quality control with fastp
+fastp -i hic_R1.fastq.gz -I hic_R2.fastq.gz -o hic_clean_R1.fastq.gz -O hic_clean_R2.fastq.gz --detect_adapter_for_pe --thread 16
+
+# Hi-C alignment with Juicer
+juicer.sh -g genome_name -d juicer_output -p restriction_sites/DpnII.txt -y restriction_sites/DpnII.txt -z contigs.fasta -s DpnII -t 32
+
+# Chromosome scaffolding with 3D-DNA
+run-asm-pipeline.sh --editor-repeat-coverage 10 contigs.fasta juicer_output/aligned/merged_nodups.txt
+
+# Filter Nanopore reads
+perl Nanopore_IOC.pl -i nanopore_reads.fastq.gz -o nanopore_filtered.fastq -minlen 5000 -mingv 7
+
+# Error correction with NECAT
+necat correct config.txt
+
+# Gap closing with LR_gapcloser
+LR_gapcloser -i scaffolded_assembly.fasta -l nanopore_corrected.fastq -o gap_closed_assembly.fasta -t 32
+
+# PacBio reads mapping with Minimap2
+minimap2 -ax map-pb -t 32 gap_closed_assembly.fasta pacbio_hifi.fastq.gz | samtools sort -@ 8 -o pacbio_mapped.bam
+
+# Nanopore reads mapping with Minimap2
+minimap2 -ax map-ont -t 32 gap_closed_assembly.fasta nanopore_filtered.fastq | samtools sort -@ 8 -o ont_mapped.bam
+
+# Assembly continuity statistics
+assembly-stats gap_closed_assembly.fasta
+
+# Generate k-mer database with Meryl
+meryl count k=21 output reads.meryl pacbio_hifi.fastq.gz
+
+# Base accuracy assessment with Merqury
+merqury reads.meryl gap_closed_assembly.fasta merqury_output
+
+# Completeness assessment with BUSCO (Tetrapoda)
+busco -i gap_closed_assembly.fasta -o busco_tetrapoda -l tetrapoda_odb10 -m genome -c 32
+
+# Completeness assessment with BUSCO (Vertebrata)
+busco -i gap_closed_assembly.fasta -o busco_vertebrata -l vertebrata_odb10 -m genome -c 32

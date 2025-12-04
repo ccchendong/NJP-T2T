@@ -1,0 +1,22 @@
+#!/bin/sh
+# Centromeric repeat alignment with BLAST
+blastn -query centromere_repeats.fa -db genome -outfmt 6 -evalue 1e-10 -num_threads 80 -out blast.out
+
+# Sequence complexity assessment with NeSSie
+NeSSie -I genome.fasta -E -l 20000 -s 20000 -o nessie_out
+
+# Cytosine methylation analysis with Nanopolish
+nanopolish call-methylation --progress -t 80 -r map.NJ_clean.fq.gz -b output.sorted.bam -g pig.Chrplus.fasta > nanopolish_call_methylation.
+tsv
+
+# Methylation coverage calculation with BEDTools
+bedtools coverage -a windows.bed -b methylation.bed > methylation_coverage.bed
+
+# K-mer counting with KMC
+kmc -k151 -ci10 -cs100000 -fm genome.fasta kmc_db tmp
+
+# Centromeric repeat identification with SRF
+srf -i kmer_counts.txt -o srf_out -t 10
+
+# Telomere annotation with quarTeT
+python quartet.py TeloExplorer -i pig.Chr.fasta -c animal -m 10 -p NJ

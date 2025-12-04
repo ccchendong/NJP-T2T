@@ -11,11 +11,14 @@ hifiasm -o assembly_hifiasm -t 32 --primary pacbio_hifi.fastq.gz
 # Extract primary assembly from GFA
 awk '/^S/{print ">"$2"\n"$3}' assembly_hifiasm.p_ctg.gfa > contigs.fasta
 
-# Hi-C reads quality control with fastp
-fastp -i hic_R1.fastq.gz -I hic_R2.fastq.gz -o hic_clean_R1.fastq.gz -O hic_clean_R2.fastq.gz --detect_adapter_for_pe --thread 16
+# Hi-C reads quality control (adapter removal)
+cutadapt -a adapter_seq -A adapter_seq -o hic_clean_R1.fastq -p hic_clean_R2.fastq hic_R1.fastq hic_R2.fastq
 
 # Hi-C alignment with Juicer
 juicer.sh -g genome_name -d juicer_output -p restriction_sites/DpnII.txt -y restriction_sites/DpnII.txt -z contigs.fasta -s DpnII -t 32
+
+# Generate valid chromatin interaction pairs with Juicer
+juicer_tools pre juicer_output/aligned/merged_nodups.txt interaction_pairs.hic contigs.fasta.fai
 
 # Chromosome scaffolding with 3D-DNA
 run-asm-pipeline.sh --editor-repeat-coverage 10 contigs.fasta juicer_output/aligned/merged_nodups.txt
